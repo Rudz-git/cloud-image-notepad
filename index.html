@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Image Notepad (GitHub Storage)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      padding: 20px;
+    }
+    h2 {
+      margin-bottom: 10px;
+    }
+    .controls {
+      margin-bottom: 15px;
+    }
+    input, button {
+      padding: 8px;
+      margin-right: 5px;
+    }
+    button {
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .image-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .image-list img {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🖼️ Cloud Image Notepad (GitHub)</h2>
+
+<div class="controls">
+  <input type="file" id="imageInput" accept="image/*">
+  <input type="text" id="fileName" placeholder="File name (e.g. photo.png)">
+  <button onclick="addImage()">Add Image</button>
+  <button onclick="loadImages()">Refresh List</button>
+</div>
+
+<div id="status"></div>
+
+<div class="image-list" id="imageList"></div>
+
+<script>
+/* =========================
+   CONFIG SECTION
+========================= */
+const GITHUB_OWNER = "Rudz-git";
+const GITHUB_REPO = "cloud-image-notepad";
+const IMAGE_FOLDER = "images"; // folder in repo
+const GITHUB_TOKEN = "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";
+
+/* =========================
+   HELPER FUNCTIONS
+========================= */
+function setStatus(message, success = true) {
+  const status = document.getElementById("status");
+  status.style.color = success ? "green" : "red";
+  status.textContent = message;
+}
+
+function apiHeaders() {
+  return {
+    "Authorization": `token ${GITHUB_TOKEN}`,
+    "Accept": "application/vnd.github.v3+json"
+  };
+}
+
+/* =========================
+   LOAD IMAGES
+========================= */
+async function loadImages() {
+  setStatus("Loading images...");
+  const list = document.getElementById("imageList");
+  list.innerHTML = "";
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${IMAGE_FOLDER}`,
+      { headers: apiHeaders() }
+    );
+
+    if (!response.ok) throw new Error("Failed to load image list");
+
+    const files = await response.json();
+
+    for (const file of files) {
+      if (file.type === "file") {
+        const img = document.createElement("img");
+        img.src = file.download_url;
+        img.alt = file.name;
+        list.appendChild(img);
+      }
+    }
+
+    setStatus("Images loaded successfully ✔️");
+  } catch (error) {
+    setStatus(error.message, false);
+  }
+}
+
+/* =========================
+   ADD / UPDATE IMAGE
+========================= */
+async function addImage() {
+  const fileInput = document.getElementById("imageInput");
+  const fileNameInput = document.getElementById("fileName");
+
+  if (!fileInput.files.length || !fileNameInput.value) {
+    setStatus("Please select an image and enter a filename.", false);
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    try {
+      const base64Content = reader.result.split(",")[1];
+      const path = `${IMAGE_FOLDER}/${fileNameInput.value}`;
+
+      // Check if file exists (to get SHA)
+      let sha = null;
+      const checkResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
+        { headers: apiHeaders() }
+      );
+
+      if (checkResponse.ok) {
+        const existingFile = await checkResponse.json();
+        sha = existingFile.sha;
+      }
+
+      const uploadResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}`,
+        {
+          method: "PUT",
+          headers: {
+            ...apiHeaders(),
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message: sha ? "Update image" : "Add image",
+            content: base64Content,
+            sha: sha
+          })
+        }
+      );
+
+      if (!uploadResponse.ok) throw new Error("Failed to upload image");
+
+      setStatus("Image saved successfully ✔️");
+      loadImages();
+
+    } catch (error) {
+      setStatus(error.message, false);
+    }
+  };
+
+  reader.readAsDataURL(file);
+}
+
+/* =========================
+   INITIAL LOAD
+========================= */
+loadImages();
+</script>
+
+</body>
+</html>
